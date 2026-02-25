@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>计量文献精准提取</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Noto+Serif+SC:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f0f0f; --surface: #1a1a1a; --border: #2e2e2e;
+    --accent: #c8f060; --accent2: #60c8f0; --text: #e8e8e0;
+    --text-dim: #888880; --danger: #f06060;
+    --mono: 'IBM Plex Mono', monospace; --serif: 'Noto Serif SC', serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--serif); min-height: 100vh; }
+  header { border-bottom: 1px solid var(--border); padding: 18px 28px; display: flex; align-items: center; gap: 14px; }
+  .logo { font-family: var(--mono); font-size: 11px; color: var(--accent); letter-spacing: 0.15em; }
+  h1 { font-size: 17px; font-weight: 600; }
+  .badge { font-family: var(--mono); font-size: 10px; background: var(--accent); color: #000; padding: 2px 8px; border-radius: 2px; margin-left: auto; }
+  .main { display: grid; grid-template-columns: 420px 1fr; height: calc(100vh - 57px); }
+  .panel { padding: 22px 24px; overflow-y: auto; }
+  .panel-left { border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 14px; }
+  .panel-right { background: #111; }
+  label { font-family: var(--mono); font-size: 10px; color: var(--text-dim); letter-spacing: 0.08em; display: block; margin-bottom: 5px; }
+  input[type="text"], textarea { width: 100%; background: var(--surface); border: 1px solid var(--border); color: var(--text); font-family: var(--serif); font-size: 13px; padding: 9px 11px; border-radius: 4px; outline: none; transition: border-color 0.2s; }
+  input[type="text"]:focus, textarea:focus { border-color: var(--accent2); }
+  textarea { resize: vertical; min-height: 120px; line-height: 1.6; }
+  .tabs { display: flex; gap: 2px; background: var(--surface); border-radius: 5px; padding: 3px; border: 1px solid var(--border); }
+  .tab { flex: 1; font-family: var(--mono); font-size: 11px; padding: 7px; background: transparent; border: none; color: var(--text-dim); cursor: pointer; border-radius: 3px; transition: all 0.15s; text-align: center; }
+  .tab.active { background: var(--border); color: var(--text); }
+  .drop-zone { border: 1px dashed var(--border); border-radius: 6px; padding: 28px 16px; text-align: center; cursor: pointer; transition: all 0.2s; background: var(--surface); }
+  .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent2); background: rgba(96,200,240,0.04); }
+  .drop-zone .icon { font-size: 28px; margin-bottom: 8px; opacity: 0.5; }
+  .drop-zone p { font-family: var(--mono); font-size: 11px; color: var(--text-dim); line-height: 1.7; }
+  input[type="file"] { display: none; }
+  .file-preview { background: var(--surface); border: 1px solid var(--border); border-radius: 5px; padding: 10px 14px; display: flex; align-items: center; gap: 10px; }
+  .file-preview .file-icon { font-size: 20px; }
+  .file-preview .file-info { flex: 1; }
+  .file-preview .file-name { font-family: var(--mono); font-size: 11px; color: var(--accent2); word-break: break-all; }
+  .file-preview .file-size { font-family: var(--mono); font-size: 10px; color: var(--text-dim); }
+  .file-preview .remove-btn { font-family: var(--mono); font-size: 10px; color: var(--danger); cursor: pointer; background: none; border: none; padding: 4px; }
+  .apikey-row { display: flex; gap: 6px; }
+  .apikey-row input { flex: 1; font-family: var(--mono); font-size: 11px; }
+  .save-btn { font-family: var(--mono); font-size: 10px; padding: 9px 12px; background: transparent; border: 1px solid var(--border); color: var(--text-dim); cursor: pointer; border-radius: 4px; transition: all 0.15s; white-space: nowrap; }
+  .save-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+  .extract-btn { font-family: var(--mono); font-size: 13px; font-weight: 600; padding: 13px; width: 100%; background: var(--accent); color: #000; border: none; cursor: pointer; border-radius: 4px; letter-spacing: 0.05em; transition: opacity 0.2s; margin-top: auto; }
+  .extract-btn:hover { opacity: 0.9; }
+  .extract-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .result-header { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; }
+  .counter { color: var(--accent); }
+  .toolbar { display: flex; gap: 6px; margin-bottom: 14px; }
+  .toolbar-btn { font-family: var(--mono); font-size: 10px; padding: 5px 11px; background: transparent; border: 1px solid var(--border); color: var(--text-dim); cursor: pointer; border-radius: 3px; transition: all 0.15s; }
+  .toolbar-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+  .loading { display: flex; align-items: center; gap: 8px; color: var(--text-dim); font-family: var(--mono); font-size: 12px; padding: 20px; }
+  .dot { width: 5px; height: 5px; background: var(--accent); border-radius: 50%; animation: pulse 1s infinite; }
+  .dot:nth-child(2){animation-delay:.2s}.dot:nth-child(3){animation-delay:.4s}
+  @keyframes pulse{0%,100%{opacity:.2}50%{opacity:1}}
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 18px; margin-bottom: 12px; animation: slideIn 0.3s ease; }
+  @keyframes slideIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+  .card-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; line-height: 1.4; }
+  .card-title .idx { font-family: var(--mono); font-size: 10px; color: var(--accent); margin-right: 6px; }
+  .section { margin-bottom: 10px; }
+  .section-label { font-family: var(--mono); font-size: 10px; color: var(--text-dim); letter-spacing: 0.08em; margin-bottom: 4px; }
+  .section-content { font-size: 13px; line-height: 1.6; }
+  .tag-row { display: flex; flex-wrap: wrap; gap: 5px; }
+  .tag { font-family: var(--mono); font-size: 10px; padding: 2px 8px; border-radius: 3px; border: 1px solid; }
+  .tag-model{border-color:#c8f060;color:#c8f060;background:rgba(200,240,96,.06)}
+  .tag-dep{border-color:#60c8f0;color:#60c8f0;background:rgba(96,200,240,.06)}
+  .tag-indep{border-color:#c060f0;color:#c060f0;background:rgba(192,96,240,.06)}
+  .tag-control{border-color:#666;color:#888;background:rgba(128,128,128,.06)}
+  .tag-sig{border-color:#60f0a0;color:#60f0a0;background:rgba(96,240,160,.06)}
+  .tag-insig{border-color:#f06060;color:#f06060;background:rgba(240,96,96,.06)}
+  .tag-mixed{border-color:#f0c060;color:#f0c060;background:rgba(240,192,96,.06)}
+  .divider{height:1px;background:var(--border);margin:8px 0}
+  .note-box{background:rgba(240,96,96,.06);border:1px solid rgba(240,96,96,.2);border-radius:4px;padding:8px 11px;font-size:11px;font-family:var(--mono);color:var(--danger);margin-top:6px}
+  .empty-state{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text-dim);gap:8px;text-align:center}
+  .empty-state .icon{font-size:36px;opacity:.25}
+  .empty-state p{font-family:var(--mono);font-size:11px}
+  .error-msg{font-family:var(--mono);font-size:12px;color:var(--danger);padding:12px;background:rgba(240,96,96,.07);border:1px solid rgba(240,96,96,.2);border-radius:4px}
+
+  /* regression table */
+  .reg-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px; }
+  .reg-table th { font-family: var(--mono); font-size: 10px; color: var(--text-dim); text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); }
+  .reg-table td { padding: 4px 8px; border-bottom: 1px solid rgba(255,255,255,0.04); font-family: var(--mono); }
+  .reg-table tr:hover td { background: rgba(255,255,255,0.02); }
+  .sig-3 { color: #c8f060; }
+  .sig-2 { color: #90d040; }
+  .sig-1 { color: #60a020; }
+  .sig-0 { color: var(--text-dim); }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="logo">ECON·EXTRACT</span>
+  <h1>计量文献精准提取</h1>
+  <span class="badge">严格忠于原文</span>
+</header>
+
+<div class="main">
+  <div class="panel panel-left">
+    <div>
+      <label>API KEY（蓝移或其他镜像）</label>
+      <div class="apikey-row">
+        <input type="text" id="apiKey" placeholder="sk-…" />
+        <button class="save-btn" onclick="saveKey()">保存</button>
+      </div>
+    </div>
+
+    <div>
+      <label>输入方式</label>
+      <div class="tabs">
+        <button class="tab active" id="tab-btn-pdf" onclick="switchTab('pdf')">📄 上传 PDF</button>
+        <button class="tab" id="tab-btn-text" onclick="switchTab('text')">📝 粘贴文本</button>
+      </div>
+    </div>
+
+    <div id="tab-pdf">
+      <div class="drop-zone" id="dropZone"
+        onclick="document.getElementById('fileInput').click()"
+        ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropFile(event)">
+        <div class="icon">📄</div>
+        <p>点击选择 PDF，或拖拽到此处</p>
+      </div>
+      <input type="file" id="fileInput" accept=".pdf" onchange="fileSelected(event)">
+      <div id="filePreview" style="display:none;margin-top:10px"></div>
+    </div>
+
+    <div id="tab-text" style="display:none">
+      <textarea id="content" placeholder="粘贴摘要 + 实证部分…"></textarea>
+    </div>
+
+    <div>
+      <label>文章标题（可选）</label>
+      <input type="text" id="title" placeholder="不填则由模型自动识别" />
+    </div>
+
+    <button class="extract-btn" id="extractBtn" onclick="extract()">▶ 开始提取</button>
+  </div>
+
+  <div class="panel panel-right" id="resultsArea">
+    <div class="empty-state">
+      <div class="icon">⊞</div>
+      <p>上传 PDF 或粘贴文本后点击提取</p>
+      <p style="opacity:.5">无法确认的字段会标注，绝不捏造</p>
+    </div>
+  </div>
+</div>
+
+<script>
+// Set PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+const API_BASE = 'http://1.95.142.151:3000/v1';
+
+const SYSTEM_PROMPT = `你是一个计量经济学文献信息提取助手。核心原则：严格忠于原文，绝对不推测、不补充、不捏造。
+
+请从文章内容中提取以下信息，以JSON格式返回，不要有任何其他文字：
+
+{
+  "title": "文章标题",
+  "models": ["使用的计量模型，如OLS, IV, 2SLS, DID, PSM, RDD, SDM, SLM, SEM, CRM, Probit, Logit, GMM, FE, RE, VAR等"],
+  "dependent_vars": ["被解释变量，使用原文表述"],
+  "independent_vars": ["核心解释变量，使用原文表述"],
+  "control_vars": ["控制变量，原文明确列出则填，否则填null"],
+  "selected_model": "最终选用的模型（如有模型选择过程则注明）",
+  "regression_results": [
+    {
+      "var": "变量名（原文）",
+      "coef_b": "系数b（数值）",
+      "coef_b_sig": "显著性：***/**/* 或 n.s.",
+      "coef_wx": "空间滞后系数c（SDM专用，无则null）",
+      "coef_wx_sig": "空间滞后显著性（无则null）"
+    }
+  ],
+  "significance": "显著 / 不显著 / 部分显著 / 原文未明确说明",
+  "data_source": "数据来源，无则null",
+  "sample": "样本信息，无则null",
+  "main_finding": "主要实证结论，1-2句，基于原文",
+  "uncertain_fields": ["无法从原文确认的字段名"]
+}
+
+规则：某字段原文无明确信息 → 填null。只输出JSON。`;
+
+let papers = [];
+let currentFile = null;
+let currentTab = 'pdf';
+
+const savedKey = localStorage.getItem('econ_api_key') || '';
+if (savedKey) document.getElementById('apiKey').value = savedKey;
+
+function saveKey() {
+  const k = document.getElementById('apiKey').value.trim();
+  if (k) { localStorage.setItem('econ_api_key', k); showToast('已保存'); }
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.getElementById('tab-btn-pdf').classList.toggle('active', tab==='pdf');
+  document.getElementById('tab-btn-text').classList.toggle('active', tab==='text');
+  document.getElementById('tab-pdf').style.display = tab==='pdf' ? '' : 'none';
+  document.getElementById('tab-text').style.display = tab==='text' ? '' : 'none';
+}
+
+function dragOver(e) { e.preventDefault(); document.getElementById('dropZone').classList.add('drag-over'); }
+function dragLeave() { document.getElementById('dropZone').classList.remove('drag-over'); }
+function dropFile(e) {
+  e.preventDefault(); dragLeave();
+  const f = e.dataTransfer.files[0];
+  if (f && f.type === 'application/pdf') setFile(f);
+  else showResultError('请上传 PDF 文件');
+}
+function fileSelected(e) { const f = e.target.files[0]; if (f) setFile(f); }
+
+function setFile(f) {
+  currentFile = f;
+  document.getElementById('dropZone').style.display = 'none';
+  const prev = document.getElementById('filePreview');
+  prev.style.display = '';
+  prev.innerHTML = `<div class="file-preview">
+    <span class="file-icon">📄</span>
+    <div class="file-info">
+      <div class="file-name">${f.name}</div>
+      <div class="file-size">${(f.size/1024/1024).toFixed(2)} MB</div>
+    </div>
+    <button class="remove-btn" onclick="clearFile()">✕</button>
+  </div>`;
+}
+
+function clearFile() {
+  currentFile = null;
+  document.getElementById('filePreview').style.display = 'none';
+  document.getElementById('dropZone').style.display = '';
+  document.getElementById('fileInput').value = '';
+}
+
+async function extractPdfText(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  let text = '';
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    text += content.items.map(item => item.str).join(' ') + '\n';
+  }
+  return text;
+}
+
+async function extract() {
+  const apiKey = document.getElementById('apiKey').value.trim();
+  if (!apiKey) return showResultError('请先输入 API Key');
+  const title = document.getElementById('title').value.trim();
+  let userContent;
+
+  if (currentTab === 'pdf') {
+    if (!currentFile) return showResultError('请先上传 PDF 文件');
+    setLoading('正在读取 PDF 文字内容…');
+    try {
+      const pdfText = await extractPdfText(currentFile);
+      userContent = title ? `文章标题提示：${title}\n\n${pdfText}` : pdfText;
+    } catch(e) {
+      return showResultError('PDF读取失败：' + e.message);
+    }
+  } else {
+    const text = document.getElementById('content').value.trim();
+    if (!text) return showResultError('请粘贴文章内容');
+    userContent = title ? `文章标题：${title}\n\n${text}` : text;
+  }
+
+  const btn = document.getElementById('extractBtn');
+  btn.disabled = true; btn.textContent = '提取中…';
+  setLoading('正在分析文章内容，请稍候…');
+
+  try {
+    const resp = await fetch(`${API_BASE}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 3000,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: userContent }
+        ]
+      })
+    });
+
+    if (!resp.ok) {
+      const e = await resp.json();
+      throw new Error(e.error?.message || `HTTP ${resp.status}`);
+    }
+
+    const data = await resp.json();
+    const raw = data.choices?.[0]?.message?.content || '';
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error('返回格式异常，请重试');
+    const info = JSON.parse(match[0]);
+    if (title) info.title = title;
+
+    papers.unshift({ info });
+    renderAll();
+    clearFile();
+    document.getElementById('title').value = '';
+    document.getElementById('content').value = '';
+  } catch(e) {
+    showResultError('错误：' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '▶ 开始提取';
+  }
+}
+
+function setLoading(msg) {
+  document.getElementById('resultsArea').innerHTML = `<div class="loading"><div class="dot"></div><div class="dot"></div><div class="dot"></div><span>${msg}</span></div>`;
+}
+
+function renderAll() {
+  if (!papers.length) {
+    document.getElementById('resultsArea').innerHTML = '<div class="empty-state"><div class="icon">⊞</div><p>暂无结果</p></div>';
+    return;
+  }
+  let html = `<div class="result-header"><span>RESULTS</span><span class="counter">${papers.length} 篇已提取</span></div>`;
+  html += `<div class="toolbar"><button class="toolbar-btn" onclick="exportCSV()">↓ 导出 CSV</button><button class="toolbar-btn" onclick="clearAll()">清空</button></div>`;
+  papers.forEach((p, idx) => { html += renderCard(p.info, idx + 1); });
+  document.getElementById('resultsArea').innerHTML = html;
+}
+
+function renderCard(i, n) {
+  let h = `<div class="card">`;
+  h += `<div class="card-title"><span class="idx">#${n}</span>${i.title || '（标题未识别）'}</div>`;
+
+  if (i.models?.length) h += sec('候选模型', tags(i.models, 'tag-model'));
+  if (i.selected_model) h += sec('选用模型', `<div class="tag-row"><span class="tag tag-model">✓ ${i.selected_model}</span></div>`);
+  if (i.dependent_vars?.length) h += sec('被解释变量 Y', tags(i.dependent_vars, 'tag-dep'));
+  if (i.independent_vars?.length) h += sec('核心解释变量 X', tags(i.independent_vars, 'tag-indep'));
+  if (i.control_vars?.length) h += sec('控制变量', tags(i.control_vars, 'tag-control'));
+
+  // Regression table
+  if (i.regression_results?.length) {
+    const hasWX = i.regression_results.some(r => r.coef_wx !== null && r.coef_wx !== undefined);
+    h += `<div class="section"><div class="section-label">回归结果</div>`;
+    h += `<table class="reg-table"><thead><tr>
+      <th>变量</th><th>系数 b</th><th>显著性</th>
+      ${hasWX ? '<th>空间滞后 W·X</th><th>显著性</th>' : ''}
+    </tr></thead><tbody>`;
+    for (const r of i.regression_results) {
+      const sc = sigClass(r.coef_b_sig);
+      const scw = sigClass(r.coef_wx_sig);
+      h += `<tr>
+        <td>${r.var}</td>
+        <td class="${sc}">${r.coef_b ?? '—'}</td>
+        <td class="${sc}">${r.coef_b_sig ?? '—'}</td>
+        ${hasWX ? `<td class="${scw}">${r.coef_wx ?? '—'}</td><td class="${scw}">${r.coef_wx_sig ?? '—'}</td>` : ''}
+      </tr>`;
+    }
+    h += `</tbody></table></div>`;
+  }
+
+  h += '<div class="divider"></div>';
+  const sc2 = i.significance?.includes('不显著') ? 'tag-insig' : i.significance?.includes('部分') ? 'tag-mixed' : i.significance?.includes('显著') ? 'tag-sig' : 'tag-control';
+  h += `<div class="section"><div class="section-label">显著性总结</div><div class="tag-row"><span class="tag ${sc2}">${i.significance || '未知'}</span></div></div>`;
+
+  if (i.main_finding) h += sec('主要发现', `<div class="section-content">${i.main_finding}</div>`);
+  if (i.data_source || i.sample) {
+    let d = '';
+    if (i.data_source) d += `来源：${i.data_source}<br>`;
+    if (i.sample) d += `样本：${i.sample}`;
+    h += sec('数据 / 样本', `<div class="section-content" style="font-size:12px">${d}</div>`);
+  }
+  if (i.uncertain_fields?.length) h += `<div class="note-box">⚠ 不确定字段（请人工核对）：${i.uncertain_fields.join('、')}</div>`;
+  return h + '</div>';
+}
+
+function sigClass(s) {
+  if (!s || s === 'n.s.') return 'sig-0';
+  if (s.includes('***')) return 'sig-3';
+  if (s.includes('**')) return 'sig-2';
+  if (s.includes('*')) return 'sig-1';
+  return 'sig-0';
+}
+
+function sec(label, content) { return `<div class="section"><div class="section-label">${label}</div>${content}</div>`; }
+function tags(arr, cls) { return `<div class="tag-row">${arr.map(v => `<span class="tag ${cls}">${v}</span>`).join('')}</div>`; }
+
+function exportCSV() {
+  const rows = [['编号','标题','候选模型','选用模型','被解释变量','核心解释变量','控制变量','显著性','主要发现','数据来源','样本']];
+  papers.forEach((p, i) => {
+    const x = p.info;
+    rows.push([i+1, x.title||'', (x.models||[]).join('; '), x.selected_model||'',
+      (x.dependent_vars||[]).join('; '), (x.independent_vars||[]).join('; '),
+      (x.control_vars||[]).join('; '), x.significance||'', x.main_finding||'',
+      x.data_source||'', x.sample||'']);
+  });
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,\uFEFF' + encodeURIComponent(csv);
+  a.download = `计量文献_${new Date().toLocaleDateString('zh')}.csv`;
+  a.click();
+}
+
+function clearAll() { if (confirm('清空所有结果？')) { papers = []; renderAll(); } }
+function showResultError(msg) { document.getElementById('resultsArea').innerHTML = `<div class="error-msg">${msg}</div>`; }
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#2a2a2a;color:#fff;font-family:monospace;font-size:12px;padding:8px 18px;border-radius:4px;z-index:9999;border:1px solid #444';
+  t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 2000);
+}
+</script>
+</body>
+</html>
